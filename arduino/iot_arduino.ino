@@ -1,7 +1,19 @@
-#define NUM_SAMPLES 4000
+#include <NewPing.h> 
+
+// 소리 센서 핀 및 설정
 #define SOUND_SENSOR_1 A0
 #define SOUND_SENSOR_2 A1
 #define SOUND_SENSOR_3 A2
+
+// 초음파 센서 핀 및 설정
+#define TRIGGER_PIN_1 7
+#define ECHO_PIN_1 8
+#define TRIGGER_PIN_2 9
+#define ECHO_PIN_2 10
+#define MAX_DISTANCE 40  // 초음파 센서의 최대 거리(cm)
+
+NewPing sonar1(TRIGGER_PIN_1, ECHO_PIN_1, MAX_DISTANCE);
+NewPing sonar2(TRIGGER_PIN_2, ECHO_PIN_2, MAX_DISTANCE);
 
 // 오프셋 저장 변수
 float sound1_offset = 31.2495;
@@ -20,7 +32,8 @@ float sound3_filter_state = 0;
 
 unsigned long t_start = 0;
 
-void setup() {
+void setup() 
+{
     Serial.begin(115200);
 
     // 소리 센서 핀 설정
@@ -28,13 +41,21 @@ void setup() {
     pinMode(SOUND_SENSOR_2, INPUT);
     pinMode(SOUND_SENSOR_3, INPUT);
 
+    // 초음파 센서 핀 설정
+    pinMode(TRIGGER_PIN_1, OUTPUT);
+    pinMode(ECHO_PIN_1, INPUT);
+    pinMode(TRIGGER_PIN_2, OUTPUT);
+    pinMode(ECHO_PIN_2, INPUT);
+
     // 샘플링 주기 타이머 초기화
     t_start = millis();
 }
 
-void loop() {
+void loop() 
+{
     // 주기적 샘플링 - 0.02초(20ms) 주기
-    if (millis() - t_start >= 20) {
+    if (millis() - t_start >= 20) 
+    {
         t_start = millis(); // 주기 타이머 초기화
 
         // 소리 신호의 오프셋을 먼저 제거(1차 필터)
@@ -47,22 +68,41 @@ void loop() {
         filtered_sound2 = applyComplementaryFilter(raw_sound2, sound2_filter_state);
         filtered_sound3 = applyComplementaryFilter(raw_sound3, sound3_filter_state);
 
-        // 결과 출력(serial monitor)
-        //Serial.print("Filtered Sound1: "); Serial.print(filtered_sound1);
-        //Serial.print("\tFiltered Sound2: "); Serial.print(filtered_sound2);
-        //Serial.print("\tFiltered Sound3: "); Serial.println(filtered_sound3);
+        // 소리센서의 값을 기준으로 초음파 센서 활성화
+        if (filtered_sound1 <= 10 && filtered_sound2 <= 10 && filtered_sound3 <= 10) 
+        {
+            // 초음파 센서로부터 거리값 읽기
+            int distance1 = sonar1.ping_cm();
+            int distance2 = sonar2.ping_cm();
 
-        // 결과 출력(serial plotter)
-        Serial.print(filtered_sound1, 4);
-        Serial.print("\t");
-        Serial.print(filtered_sound2, 4);
-        Serial.print("\t");
-        Serial.println(filtered_sound3, 4);
+            // 결과 출력(serial monitor)
+            Serial.print("Ultrasonic Distance 1: ");
+            Serial.print(distance1);
+            Serial.print(" cm\t");
+            Serial.print("Ultrasonic Distance 2: ");
+            Serial.print(distance2);
+            Serial.println(" cm");
+        } 
+        else 
+        {
+            // 결과 출력(serial monitor)
+            //Serial.print("Filtered Sound1: "); Serial.print(filtered_sound1);
+            //Serial.print("\tFiltered Sound2: "); Serial.print(filtered_sound2);
+            //Serial.print("\tFiltered Sound3: "); Serial.println(filtered_sound3);
+            
+            // 결과 출력(serial plotter) - 소리센서 값 사용
+            Serial.print(filtered_sound1, 4);
+            Serial.print("\t");
+            Serial.print(filtered_sound2, 4);
+            Serial.print("\t");
+            Serial.println(filtered_sound3, 4);
+        }
     }
 }
 
 // 2차적 필터: 상보 필터 적용
-float applyComplementaryFilter(int raw_value, float &filter_state) {
+float applyComplementaryFilter(int raw_value, float &filter_state) 
+{
     // 매트랩으로 계산된 필터 계수
     float A = 0.8182;
     float B = 0.0091;
