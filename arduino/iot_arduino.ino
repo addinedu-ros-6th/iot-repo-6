@@ -4,9 +4,9 @@
 #define SOUND_SENSOR_3 A2
 
 // 오프셋 저장 변수
-float sound1_offset = 30.7111;
-float sound2_offset = 30.0552;
-float sound3_offset = 30.1502;
+float sound1_offset = 31.2495;
+float sound2_offset = 31.5667;
+float sound3_offset = 31.5102;
 
 // 필터링된 값 저장 변수
 float filtered_sound1 = 0;
@@ -37,38 +37,34 @@ void loop() {
     if (millis() - t_start >= 20) {
         t_start = millis(); // 주기 타이머 초기화
 
-        // 상보 필터 적용
-        applyComplementaryFilter();
+        // 소리 신호의 오프셋을 먼저 제거(1차 필터)
+        int raw_sound1 = analogRead(SOUND_SENSOR_1) - sound1_offset;
+        int raw_sound2 = analogRead(SOUND_SENSOR_2) - sound2_offset;
+        int raw_sound3 = analogRead(SOUND_SENSOR_3) - sound3_offset;
+
+        // 상보 필터 적용(2차 필터)
+        filtered_sound1 = applyComplementaryFilter(raw_sound1, sound1_filter_state);
+        filtered_sound2 = applyComplementaryFilter(raw_sound2, sound2_filter_state);
+        filtered_sound3 = applyComplementaryFilter(raw_sound3, sound3_filter_state);
 
         // 결과 출력(serial monitor)
-        Serial.print("Filtered Sound1: "); Serial.print(filtered_sound1);
-        Serial.print("\tFiltered Sound2: "); Serial.print(filtered_sound2);
-        Serial.print("\tFiltered Sound3: "); Serial.println(filtered_sound3);
+        //Serial.print("Filtered Sound1: "); Serial.print(filtered_sound1);
+        //Serial.print("\tFiltered Sound2: "); Serial.print(filtered_sound2);
+        //Serial.print("\tFiltered Sound3: "); Serial.println(filtered_sound3);
 
         // 결과 출력(serial plotter)
-        Serial.print(filtered_sound1);
+        Serial.print(filtered_sound1, 4);
         Serial.print("\t");
-        Serial.print(filtered_sound2);
+        Serial.print(filtered_sound2, 4);
         Serial.print("\t");
-        Serial.println(filtered_sound3);
+        Serial.println(filtered_sound3, 4);
     }
 }
 
 // 2차적 필터: 상보 필터 적용
-void applyComplementaryFilter() {
-    int raw_sound1 = analogRead(SOUND_SENSOR_1) - sound1_offset;
-    int raw_sound2 = analogRead(SOUND_SENSOR_2) - sound2_offset;
-    int raw_sound3 = analogRead(SOUND_SENSOR_3) - sound3_offset;
-
-    filtered_sound1 = ComplementaryFilter(sound1_filter_state, raw_sound1);
-    filtered_sound2 = ComplementaryFilter(sound2_filter_state, raw_sound2);
-    filtered_sound3 = ComplementaryFilter(sound3_filter_state, raw_sound3);
-}
-
-// 상보 필터 함수
-float ComplementaryFilter(float &filter_state, float raw_value) {
-    // 매트랩으로 계산
-    float A = 0.8182; // 필터 계수
+float applyComplementaryFilter(int raw_value, float &filter_state) {
+    // 매트랩으로 계산된 필터 계수
+    float A = 0.8182;
     float B = 0.0091;
     float C = 1;
     float D = 0;
@@ -80,4 +76,3 @@ float ComplementaryFilter(float &filter_state, float raw_value) {
     
     return y;
 }
-
