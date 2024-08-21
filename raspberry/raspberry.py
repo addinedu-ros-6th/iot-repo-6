@@ -30,22 +30,20 @@ class Cam:
 
 
 class Manual:
-    def __init__(self, socket):
-        EndMarker = b'\n'
-        EndMarkerLength = len(EndMarker)
+    def __init__(self, End, socket, serial):
         Msg = b''
 
-        while EndMarker not in Msg:
-            Msg += socket.recv(1024)
+        while End not in Msg:
+            Msg += socket.recv()
         
         if Msg != b'':
             Start = Msg[:3].decode()
-            Msg = Msg[3:-EndMarkerLength]
+            Msg = Msg[3:-len(End)]
 
             if Start == "GRA":
                 SendStart = b"RAA"
-                Send = SendStart + EndMarker
-                # serial Send
+                SendPacket = SendStart + End
+                serial.write(SendPacket)
 
             elif Msg == "GRM":
                 Data = Msg[:-1]
@@ -53,40 +51,58 @@ class Manual:
                 DataSum &= 0xFF
 
                 if DataSum == 0x00:
-                    SendPacket = b'RAM' + Data + EndMarker
-                    # serial SendPacket
+                    SendStart = b'RAM'
+                    checksum = Data & 0xFF
+                    checksum = (~checksum & 0xFF) + 1
+                    SendPacket = SendStart + Data + checksum + End
+                    serial.write(SendPacket)
 
 
 
 class DataUpload:
-    def __init__(self):
-        # serial accept
-        # packet 
-        # sound_sensor_data = Msg[0:5]
-        # ultraSoundSensorData = Msg[]
-        # motor_data = Msg[]
+    def __init__(self, End, serial, cursor):
+        msg = b''
 
-        # if Start == "ARA":
-            # if checksum == 0:
-                # upload mysql
+        while End not in msg:
+            msg += serial.readline()
+        
+        if msg != b'':
+            start = msg[:3].decode()
+            msg = msg[3:-len(End)]
+
+            if start == "ARA":
+                control = msg[1]
+                sound = msg[2:8]
+                ultra = msg[9:13]
+                motor = msg[14:15]
+                checksum = msg[-1]
+                checksum_cal = sum(sound) + sum(ultra) + sum(motor) + checksum
+                checksum_cal &= 0xFF
+
+                # if checksum_cal == 0x00:
+                #     sql = """insert into (tableName) values()"""
 
 
 
 if __name__ == "__main__":
-    server_address = "192.168.0.13"
-    server_port = 9999
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect((server_address, server_port))
+    EndMarker = b'\n'
+    ServerAddress = "192.168.0.13"
+    ServerPort = 9999
+    ClientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    ClientSocket.connect((ServerAddress, ServerPort))
+    ArduinoSerial = serial.Serial("/dev/ttyACM0", 115200, timeout=1)
     db = mysql.connector.connect(
-        host = "",
+        host = "addinedu-database.ctw06kigusdq.ap-northeast-2.rds.amazonaws.com",
+        port = "3306",
         user = "",
         password = "",
         database = ""
     )
+    db_cursor = db.cursor(buffered=True)
 
-    # cam(client_socket)
-    
-    # multi thread
-    # thread1    cam()
-    # thread2    manual()
-    # thread3    data_upload()
+    cam_thread = Thread(target=Cam(ClientSocket))
+    manual_thread = Thread(target=Manual(EndMarker, ArduinoSerial, ClientSocket))
+    dataUpload_thread = Thread(target=DataUpload(EndMarker, ArduinoSerial, db_cursor))
+    cam_thread.start()
+    manual_thread.start()
+    dataUpload_thread.start()
