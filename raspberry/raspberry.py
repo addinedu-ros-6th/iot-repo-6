@@ -45,30 +45,30 @@ class Manual:
             if Start == "GRA":
                 SendStart = b"RAA"
                 Send = SendStart + EndMarker
-                serial Send
+                # serial Send
 
             elif Msg == "GRM":
-                data = Msg[:-1]
-                checksum = Msg[-1]
+                Data = Msg[:-1]
+                DataSum = sum(Msg)
+                DataSum &= 0xFF
 
-                if checksum == 0:
-                    motor value
-                    packet - Start: "RAM", data: motor value
-                    serial send
+                if DataSum == 0x00:
+                    SendPacket = b'RAM' + Data + EndMarker
+                    # serial SendPacket
 
 
 
 class DataUpload:
     def __init__(self):
-        serial accept
-        packet 
-        sound_sensor_data = Msg[0:5]
-        ultraSoundSensorData = Msg[]
-        motor_data = Msg[]
+        # serial accept
+        # packet 
+        # sound_sensor_data = Msg[0:5]
+        # ultraSoundSensorData = Msg[]
+        # motor_data = Msg[]
 
-        if Start == "ARA":
-            if checksum == 0:
-                upload mysql
+        # if Start == "ARA":
+            # if checksum == 0:
+                # upload mysql
 
 
 
@@ -84,9 +84,9 @@ if __name__ == "__main__":
         database = ""
     )
 
-    cam(client_socket)
+    # cam(client_socket)
     
-    multi thread
-    thread1    cam()
-    thread2    manual()
-    thread3    data_upload()
+    # multi thread
+    # thread1    cam()
+    # thread2    manual()
+    # thread3    data_upload()
