@@ -1,6 +1,6 @@
 #include <NewPing.h>
 
-// 소리 센서 핀 및 설정
+// 소리 센서 핀 설정
 const int soundSensor1Pin = A0;
 const int soundSensor2Pin = A1;
 const int soundSensor3Pin = A2;
@@ -145,7 +145,7 @@ void processReceivedData()
         char byte1 = Serial.read();
         char byte2 = Serial.read();
         char byte3 = Serial.read();
-        int8_t motorValue = Serial.read();  // motorValue는 부호 있는 8비트 정수로 처리
+        uint8_t motorValue = Serial.read();
         uint8_t receivedChecksum = Serial.read();
         char endChar = Serial.read();
 
@@ -171,12 +171,7 @@ void processReceivedData()
             if (calculatedChecksum == receivedChecksum) 
             {
                 // 체크섬이 일치하면 모터 제어
-                int adjustedMotorValue = motorValue + 90;  // 모터 값에 90도를 더함
-
-                // 최종 모터 값이 20도에서 160도 사이에 있도록 범위를 제한
-                adjustedMotorValue = constrain(adjustedMotorValue, 20, 160);
-
-                analogWrite(motorPin, adjustedMotorValue);  // 조정된 모터 값을 적용
+               analogWrite(motorPin, motorValue);
             } 
             else 
             {
