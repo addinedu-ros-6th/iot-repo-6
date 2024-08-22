@@ -40,8 +40,9 @@ unsigned long t_start = 0;
 // 2차적 필터: 상보 필터 적용
 float applyComplementaryFilter(int raw_value, float &filter_state) 
 {
-    float A = 0.9933555;
-    float B = 0.0199335;
+    // 매트랩으로 계산된 필터 계수
+    float A =  0.8182;
+    float B = 0.0091;;
     float C = 1;
     float D = 0;
 
