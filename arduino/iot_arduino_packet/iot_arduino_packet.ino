@@ -40,8 +40,8 @@ unsigned long t_start = 0;
 // 2차적 필터: 상보 필터 적용
 float applyComplementaryFilter(int raw_value, float &filter_state) 
 {
-    float A = 0.8182;
-    float B = 0.0091;
+    float A = 0.9933555;
+    float B = 0.0199335;
     float C = 1;
     float D = 0;
 
@@ -52,79 +52,70 @@ float applyComplementaryFilter(int raw_value, float &filter_state)
     return y;
 }
 
-// 데이터 패킷을 전송하는 함수
+// 패킷으로 데이터를 전송하는 함수
 void sendPacket(char sensorType, float sound1, float sound2, float sound3, int distance1, int distance2, uint8_t motorValue) 
 {   
-    uint8_t checksum = 0;  
+    uint8_t packet[29]; // 패킷을 위한 배열 (ARA + 타입 + 센서 데이터 + 체크섬 + '\n' 포함)
+    uint8_t checksum = 0;
 
-    Serial.print("ARA");
+    // 패킷 시작 ('ARA')
+    packet[0] = 'A';
+    packet[1] = 'R';
+    packet[2] = 'A';
 
-    // 센서 타입 전송 (S 또는 U)
-    Serial.print(sensorType);
+    // 센서 타입 ('S' 또는 'U')
+    packet[3] = sensorType;
 
-    // 소리 센서 데이터 전송 (4바이트)
-    Serial.print('S');
-    checksum += sendSoundSensorData(convertToFixedPoint(sound1));
-    checksum += sendSoundSensorData(convertToFixedPoint(sound2));
-    checksum += sendSoundSensorData(convertToFixedPoint(sound3));
+    // 소리 센서 데이터 시작 ('S')
+    packet[4] = 'S';
+
+    // 소리 센서 데이터를 고정 소수점으로 변환하여 패킷에 추가
+    uint32_t sound1_fixed = convertToFixedPoint(sound1);
+    uint32_t sound2_fixed = convertToFixedPoint(sound2);
+    uint32_t sound3_fixed = convertToFixedPoint(sound3);
     
-    // 초음파 센서 데이터 전송 (2바이트)
-    Serial.print('U');
-    checksum += sendUltrasonicSensorData((uint16_t)distance1);
-    checksum += sendUltrasonicSensorData((uint16_t)distance2);
+    packet[5] = (sound1_fixed >> 24) & 0xFF;
+    packet[6] = (sound1_fixed >> 16) & 0xFF;
+    packet[7] = (sound1_fixed >> 8) & 0xFF;
+    packet[8] = sound1_fixed & 0xFF;
 
-    // 모터 데이터 전송 (1바이트)
-    Serial.print('M');
-    checksum += sendMotorData(motorValue);
+    packet[9] = (sound2_fixed >> 24) & 0xFF;
+    packet[10] = (sound2_fixed >> 16) & 0xFF;
+    packet[11] = (sound2_fixed >> 8) & 0xFF;
+    packet[12] = sound2_fixed & 0xFF;
 
-    // 체크섬 전송
+    packet[13] = (sound3_fixed >> 24) & 0xFF;
+    packet[14] = (sound3_fixed >> 16) & 0xFF;
+    packet[15] = (sound3_fixed >> 8) & 0xFF;
+    packet[16] = sound3_fixed & 0xFF;
+
+    // 초음파 센서 데이터 시작 ('U')
+    packet[17] = 'U';
+    packet[18] = (distance1 >> 8) & 0xFF;  // distance1의 상위 1바이트
+    packet[19] = distance1 & 0xFF;         // distance1의 하위 1바이트
+    packet[20] = (distance2 >> 8) & 0xFF;  // distance2의 상위 1바이트
+    packet[21] = distance2 & 0xFF;         // distance2의 하위 1바이트
+
+    // 모터 데이터 시작 ('M')
+    packet[22] = 'M';
+    packet[23] = motorValue;
+
+    checksum = packet[5]+packet[6]+packet[7]+packet[8]+packet[9]+packet[10]+packet[11]+packet[12]+packet[13]+packet[14]+packet[15]+packet[16]+packet[18]+packet[19]+packet[20]+packet[21]+packet[23];
+
     checksum = sensor_calculateChecksum(checksum);
-    Serial.write(checksum);
+    packet[24] = checksum;
 
-    // 패킷 끝 전송
-    Serial.print('\n');
+    // 패킷 끝에 '\n' 추가
+    packet[25] = '\n';
+
+    // 패킷 전송
+    Serial.write(packet, 26); // 26바이트 패킷 전송 (\n 포함)
 }
 
 // 소리센서 값을 고정 소수점으로 변환하는 함수
 uint32_t convertToFixedPoint(float value) 
 {
     return (uint32_t)(value * 10000); // 소수점 4자리까지 고정 소수점으로 변환
-}
-
-// 소리 센서 데이터를 4바이트로 변환하고 1바이트씩 전송하는 함수
-uint8_t sendSoundSensorData(uint32_t value) 
-{
-    uint8_t byte1 = (value >> 24) & 0xFF;
-    uint8_t byte2 = (value >> 16) & 0xFF;
-    uint8_t byte3 = (value >> 8) & 0xFF;
-    uint8_t byte4 = value & 0xFF;
-
-    Serial.write(byte1);  // 상위 바이트부터 전송
-    Serial.write(byte2);
-    Serial.write(byte3);
-    Serial.write(byte4);  // 하위 바이트 전송
-
-    return byte1 + byte2 + byte3 + byte4; // 체크섬 계산을 위해 반환
-}
-
-// 초음파 센서 데이터를 2바이트로 변환하고 1바이트씩 전송하는 함수
-uint8_t sendUltrasonicSensorData(uint16_t value) 
-{
-    uint8_t upper_byte = (value >> 8) & 0xFF;
-    uint8_t lower_byte = value & 0xFF;
-
-    Serial.write(upper_byte);  // 상위 바이트 전송
-    Serial.write(lower_byte);  // 하위 바이트 전송
-
-    return upper_byte + lower_byte; // 체크섬 계산을 위해 반환
-}
-
-// 모터 데이터를 1바이트로 전송하는 함수
-uint8_t sendMotorData(uint8_t value) 
-{
-    Serial.write(value);  // 모터 값 전송
-
-    return value; // 체크섬 계산을 위해 반환
 }
 
 // sensor check sum 계산 함수
@@ -165,13 +156,13 @@ void processReceivedData()
         } 
         else if (receivedCommand.equals("RAM")) 
         {
-            // 체크섬 계산
-            uint8_t calculatedChecksum = sensor_calculateChecksum(motorValue);
+            // 체크섬 계산(모터 값과 받은 체크섬을 더한 후 하위 8비트가 0x00이어야 함)
+            uint16_t sum = motorValue + receivedChecksum;
+            uint8_t calculatedChecksum = sum & 0xFF;
 
-            if (calculatedChecksum == receivedChecksum) 
+            if (calculatedChecksum == 0x00) 
             {
                 // 체크섬이 일치하면 모터 제어
-                // 모터 값을 20도에서 160도 사이로 조정
                 int adjustedMotorValue = constrain(motorValue, 20, 160);
                 analogWrite(motorPin, adjustedMotorValue);
             } 
