@@ -13,11 +13,12 @@ import pickle
 import io
 import numpy as np
 from collections import namedtuple
+import res_rc
 
 
 
 
-class ImageReceiver(QThread):
+class Communicator(QThread):
     frame_received = pyqtSignal(QImage)
     connection_status = pyqtSignal(bool)
 
@@ -28,6 +29,7 @@ class ImageReceiver(QThread):
         self.is_running = True
         self.server_socket = None
         self.client_socket = None
+        self.video_writer = None
 
     def run(self):
         while self.is_running:
@@ -43,6 +45,7 @@ class ImageReceiver(QThread):
             self.server_socket.listen(1)
             print("Waiting for a connection...")
             self.client_socket, _ = self.server_socket.accept()
+            self.connection = self.client_socket.makefile('rb')
             print("Connection established")
             self.connection_status.emit(True)
         except socket.error as e:
@@ -50,35 +53,18 @@ class ImageReceiver(QThread):
             self.retry_connection()
 
     def receive_frames(self):
-        data = b""
-        payload_size = struct.calcsize("L")
-
         try:
             while self.is_running:
-                while len(data) < payload_size:
-                    packet = self.client_socket.recv(4096)
-                    if not packet:
-                        raise ConnectionError("Connection lost")
-                    data += packet
-
-                packed_msg_size = data[:payload_size]
-                data = data[payload_size:]
-                msg_size = struct.unpack("L", packed_msg_size)[0]
-
-                while len(data) < msg_size:
-                    data += self.client_socket.recv(4096)
-
-                frame_data = data[:msg_size]
-                data = data[msg_size:]
-
-                frame = pickle.loads(frame_data)
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                h, w, ch = frame.shape
-                bytes_per_line = ch * w
-                qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
-                self.frame_received.emit(qimg)
+                image_len = struct.unpack('<L', self.connection.read(struct.calcsize('<L')))[0]
+                if not image_len:
+                    break
+                # 이미지 데이터 수신
+                image_stream = self.connection.read(image_len)
+                qimage = QImage.fromData(image_stream)
+                self.frame_received.emit(qimage)
 
                 if self.video_writer is not None:
+                    frame = cv2.imdecode(np.frombuffer(image_stream, np.uint8), cv2.IMREAD_COLOR)
                     self.video_writer.write(frame)
 
         except (ConnectionError, pickle.UnpicklingError) as e:
@@ -87,7 +73,7 @@ class ImageReceiver(QThread):
 
     def send_data(self, data):
         try:
-            self.client_socket.sendall(data.encode())
+            self.client_socket.sendall(data)
             print(f"Sent data: {data}")
         except Exception as e:
             print(f"Error sending data: {e}")
@@ -109,13 +95,10 @@ class ImageReceiver(QThread):
         self.is_running = False
         if self.client_socket:
             self.client_socket.close()
-
-    def send_data(self, data):
-        try:
-            self.client_socket.sendall(data.encode())
-            print(f"Sent data: {data}")
-        except Exception as e:
-            print(f"Error sending data: {e}")
+            print("Socket Close Completed!!")
+        self.connection_status.emit(False)
+        print("Thread Exit Completed!!")
+          
 
     def retry_connection(self):
         self.client_socket = None
@@ -127,10 +110,10 @@ class ImageReceiver(QThread):
 
 
 
-Constants = namedtuple('Constants', ['USER_UI', 'DEVELOP_UI'])
-constants = Constants(0,1)
+Constants1 = namedtuple('Constants1', ['USER_UI', 'DEVELOP_UI'])
+constants1 = Constants1(0,1)
 
-from_class = uic.loadUiType('/home/jeback/dev_ws/PyQt_cv/ui/main.ui')[0]
+from_class = uic.loadUiType('/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/ui/iot_project.ui')[0]
 
 class Windowclass(QMainWindow, from_class):
     def __init__(self):
@@ -140,10 +123,11 @@ class Windowclass(QMainWindow, from_class):
 
         self.ModePage.clicked.connect(self.switchUI)
         # Set the initial UI
-        self.stackedUI.setCurrentIndex(constants.USER_UI)
-        self.m_UserPage = self.stackedUI.widget(constants.USER_UI)
-        self.m_DevelopPage = self.stackedUI.widget(constants.DEVELOP_UI)     
+        self.stackedUI.setCurrentIndex(constants1.USER_UI)
+        self.m_UserPage = self.stackedUI.widget(constants1.USER_UI)
+        self.m_DevelopPage = self.stackedUI.widget(constants1.DEVELOP_UI)     
 
+        self.m_ComStatusImg  = self.m_UserPage.findChild(QLabel, "ComStatusImg")
         self.m_MinValue = self.m_UserPage.findChild(QLabel, "MinValue")
         self.m_MidValue = self.m_UserPage.findChild(QLabel, "MidValue")
         self.m_MaxValue = self.m_UserPage.findChild(QLabel, "MaxValue")
@@ -157,13 +141,16 @@ class Windowclass(QMainWindow, from_class):
         self.m_ManualBtn = self.m_UserPage.findChild(QPushButton, "ManualBtn")
         self.m_RecBtn = self.m_UserPage.findChild(QPushButton, "RecBtn")
 
-        self.updateMotorValue(self.m_MoveBar.value())
+        
         self.m_ManualBtn.clicked.connect(self.clickedManualBtn)
+        self.m_RecBtn.clicked.connect(self.clickedRecordBtn)
         self.m_MoveBar.valueChanged.connect(self.updateMotorValue)
 
         self.m_MoveBar.setEnabled(False)
         self.m_ManualBtn.setEnabled(False)
+        self.m_ManualBtn.setStyleSheet('background-color:gray; color : black; border-radius : 8px;')
         self.m_RecBtn.setEnabled(False)
+        self.m_RecBtn.setStyleSheet('background-color:gray; color : black; border-radius : 8px;')
         
         self.m_ComStatus.setText("TCP / IP Not connected")
         self.m_StreamBtn.clicked.connect(self.clickedStreamBtn)
@@ -176,70 +163,105 @@ class Windowclass(QMainWindow, from_class):
         self.m_isManualModeOn = False # Manual Mode On Off 반전 시킬 용도로 사용됨.
         self.m_isRecordOn = False #Record On Off 반전 시킬 용도로 사용됨 . 
         self.m_image_receiver = None # Image receive Thread 생성될 변수
+        self.m_SliderValueInitFlag = False# Auto Mode <=> Manual Mode 상호 변경 시, 알려주는 명령 커맨드 
 
-        self.pixmap = QPixmap()  # QLabel 에 이미지 띄울 때 쓰는 변수
+        self.updateMotorValue(self.m_MoveBar.value())
+
+        self.m_FrameImg = QPixmap()  # QLabel 에 카메라에서 넘어온 이미지 프레임 띄울 때 쓰는 변수
+        self.m_disconnectImg = QPixmap('/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/img/disconnect.png')
+        self.m_connectImg = QPixmap('/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/img/connect.png') 
+        self.m_videoImg = QPixmap('/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/img/video.png')
 
     def switchUI(self):
         current_index = self.stackedUI.currentIndex()
 
-        if current_index == constants.USER_UI:
-            self.stackedUI.setCurrentIndex(constants.DEVELOP_UI)
+        if current_index == constants1.USER_UI:
+            self.stackedUI.setCurrentIndex(constants1.DEVELOP_UI)
             self.ModePage.setText('User Page')            
         else: # current_index == constants.DEVELOP_UI:
-            self.stackedUI.setCurrentIndex(constants.USER_UI)
+            self.stackedUI.setCurrentIndex(constants1.USER_UI)
             self.ModePage.setText('Developer Page')            
 
     def clickedStreamBtn(self):        
         if self.m_isStreamOn == False:  
-            #self.start_stream()
+            self.start_stream()
             self.m_StreamBtn.setText("Stream OFF")
+            self.m_StreamBtn.setStyleSheet('background-color: rgb(237, 51, 59); color : black; border-radius : 8px;')
             self.m_isStreamOn = True            
         else: # self.m_isStreamOn == True: 
-            #self.stop_stream()
+            self.stop_stream()
             self.m_StreamBtn.setText("Stream ON")
+            self.m_StreamBtn.setStyleSheet('background-color:rgba(80, 188, 223, 0.5); color : black; border-radius : 8px;')
             self.m_isStreamOn = False
     
     def clickedManualBtn(self):
         if self.m_isManualModeOn == False:
             self.m_ManualBtn.setText("OFF")
+            self.m_ManualBtn.setStyleSheet('background-color: rgb(237, 51, 59); color : black; border-radius : 8px;')
             self.m_isManualModeOn = True
             # DB에서 마지막 모터값을 받아오는 코드 적용 해야함. 
             self.m_MoveBar.setEnabled(True)
-            #self.send_command()
+            Command = 'GRM'
+            checksum = 0
+            checksum = checksum.to_bytes(1, byteorder='big')
+            DataPacket = Command.encode() + checksum + checksum + b'\n'
+            self.send_command(DataPacket)
         else: # self.m_isManualModeOn == True:
             self.m_ManualBtn.setText("ON")
+            self.m_ManualBtn.setStyleSheet('background-color:rgba(80, 188, 223, 0.5); color : black; border-radius : 8px;')
             self.m_isManualModeOn = False
             self.m_MoveBar.setEnabled(False)
+            Command = 'GRA'
+            DataPacket = Command.encode() + b'\n'
+            self.send_command(DataPacket)
+
 
     def clickedRecordBtn(self):
-        if self.m_isRecordOn == False:
-            self.m_RecBtn.setText("OFF")
-            self.m_isRecordOn = True
-            #self.start_recording()
-        else: # self.m_isRecordOn == True:
-            self.m_RecBtn.setText("ON") 
-            self.m_isRecordOn = False
-            #self.stop_recording()
+        if self.m_isManualModeOn == True:
+            if self.m_isRecordOn == False:
+                self.m_RecBtn.setText("OFF")
+                self.m_RecBtn.setStyleSheet('background-color: rgb(237, 51, 59); color : black; border-radius : 8px;')
+                self.m_isRecordOn = True
+                self.start_recording()
+            else: # self.m_isRecordOn == True:
+                self.m_RecBtn.setText("ON") 
+                self.m_RecBtn.setStyleSheet('background-color:rgba(80, 188, 223, 0.5); color : black; border-radius : 8px;')
+                self.m_isRecordOn = False
+                self.stop_recording()
+        else: # self.m_isManualModeOn == False:
+            QMessageBox.warning(self, 'Recording - Warning', 'Manual Mode Not Activated. \nPlease Activate Manual Mode!')
 
-    def updateMotorValue(self, value):
-        self.m_MotorValue.setText(f'Motor Angle : {value}')
-        Command = "GRM" # GUI -> RAS Manual Mode 전송 
-        MotorValue = (value + 90)
-        MotorValue = MotorValue.to_bytes(1, byteorder='big')
-        CheckSum   = MotorValue 
-        DataPacket = Command.encode() + MotorValue
-        #self.m_image_receiver.send_data(DataPacket)
+    def updateMotorValue(self, value):        
+        if not self.m_SliderValueInitFlag:
+            self.m_MotorValue.setText(f'Motor Angle : {value}')     
+            self.m_SliderValueInitFlag = True  
+        else:
+            self.m_MotorValue.setText(f'Motor Angle : {value}')
+            Command = "GRM" # GUI -> RAS Manual Mode 전송 
+            MotorValue = (value + 90)
+            MotorValue &= 0xFF
+            if MotorValue != 0:
+                checksum = (~MotorValue & 0xFF) + 1
+                checksum = checksum.to_bytes(1, byteorder='big')
+            else:
+                checksum = 0
+            
+            MotorValue = MotorValue.to_bytes(1, byteorder='big')
+            EndData = b'\n'
+            
+            DataPacket = Command.encode() + MotorValue + checksum + EndData
+            self.m_image_receiver.send_data(DataPacket)
             
     def start_stream(self):
         if self.m_image_receiver and self.m_image_receiver.isRunning():
             return
 
         # 서버 IP와 포트 번호 설정
-        server_ip = '192.168.0.x'  # 라즈베리파이의 IP 주소로 변경
-        server_port = 8000
+        server_ip = '192.168.219.16' 
+        server_port = 9999
 
         # 이미지 수신 스레드 생성 및 시작
-        self.m_image_receiver = ImageReceiver(server_ip, server_port)
+        self.m_image_receiver = Communicator(server_ip, server_port)
         self.m_image_receiver.frame_received.connect(self.update_image)
         self.m_image_receiver.connection_status.connect(self.update_status)
         self.m_image_receiver.start()
@@ -248,17 +270,17 @@ class Windowclass(QMainWindow, from_class):
         if self.m_image_receiver:
             self.m_image_receiver.stop()
             self.m_image_receiver = None
-            self.m_ComStatus.setText('TCP/IP Not connected')
+            # self.m_ComStatus.setText('TCP/IP Not connected')
 
     def update_image(self, q_img):
-        self.pixmap = self.pixmap.fromImage(q_img)
-        self.pixmap = self.pixmap.scaled(self.m_DisplayFrame.width(), self.m_DisplayFrame.height())
-        self.m_DisplayFrame.setPixmap(self.pixmap)
+        self.m_FrameImg = self.m_FrameImg.fromImage(q_img)
+        self.m_FrameImg = self.m_FrameImg.scaled(self.m_DisplayFrame.width(), self.m_DisplayFrame.height())
+        self.m_DisplayFrame.setPixmap(self.m_FrameImg)
     
     def start_recording(self):
         now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = now + '.avi'
-        file_path = '/home/kjb/dev_ws/pyqt_cv/data/{0}'.format(filename)
+        file_path = '/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/record{0}'.format(filename)
         self.m_image_receiver.start_recording(file_path)
 
     def stop_recording(self):
@@ -267,15 +289,29 @@ class Windowclass(QMainWindow, from_class):
     def update_status(self, status):
         if status:
             self.m_ComStatus.setText('TCP / IP Connected')
+            self.m_ComStatusImg.clear()
+            self.m_DisplayFrame.clear()
+            ScaledConnectImg = self.m_connectImg.scaled(self.m_ComStatusImg.size(), Qt.KeepAspectRatio)           
+            self.m_ComStatusImg.setPixmap(ScaledConnectImg)
             self.m_ManualBtn.setEnabled(True)
+            self.m_ManualBtn.setStyleSheet('background-color:rgba(80, 188, 223, 0.5); color : black; border-radius : 8px;')
             self.m_RecBtn.setEnabled(True)
+            self.m_RecBtn.setStyleSheet('background-color:rgba(80, 188, 223, 0.5); color : black; border-radius : 8px;')
             if self.m_isManualModeOn == True:
                 self.m_MoveBar.setEnabled(True)
         else:
             self.m_ComStatus.setText('TCP / IP Not connected')
+            self.m_ComStatusImg.clear()
+            self.m_DisplayFrame.clear()
+            ScaledDisConnectImg = self.m_disconnectImg.scaled(self.m_ComStatusImg.size(), Qt.KeepAspectRatio)           
+            self.m_ComStatusImg.setPixmap(ScaledDisConnectImg)
+            ScaledVideoImg = self.m_videoImg.scaled(self.m_DisplayFrame.size(), Qt.KeepAspectRatio)
+            self.m_DisplayFrame.setPixmap(ScaledVideoImg)
             self.m_ManualBtn.setEnabled(False)
+            self.m_ManualBtn.setStyleSheet('background-color: gray; color : black; border-radius : 8px;')
             self.m_MoveBar.setEnabled(False)
             self.m_RecBtn.setEnabled(False)            
+            self.m_RecBtn.setStyleSheet('background-color: gray; color : black; border-radius : 8px;')
             if self.m_isRecordOn == True:
                 self.stop_recording()
                 self.m_RecBtn.setText("OFF")
@@ -283,7 +319,7 @@ class Windowclass(QMainWindow, from_class):
 
     def send_command(self, DataPacket):
         if self.m_image_receiver:
-            self.m_image_receiver.send_command(DataPacket)
+            self.m_image_receiver.send_data(DataPacket)
 
     def closeEvent(self, event):
         self.stop_stream()

@@ -1,4 +1,5 @@
 #include <NewPing.h>
+#include <Servo.h>
 
 // 소리 센서 핀 설정
 const int soundSensor1Pin = A0;
@@ -6,22 +7,24 @@ const int soundSensor2Pin = A1;
 const int soundSensor3Pin = A2;
 
 // 초음파 센서 핀 설정
-const int triggerPin1 = 4; 
-const int echoPin1 = 8;     
-const int triggerPin2 = 9;  
-const int echoPin2 = 10;   
-const int maxDistance = 40; // 초음파 센서의 최대 거리(cm)
+const int triggerPin1 = 4;
+const int echoPin1 = 8;
+const int triggerPin2 = 9;
+const int echoPin2 = 10;
+const int maxDistance = 40;  // 초음파 센서의 최대 거리(cm)
 
 NewPing sonar1(triggerPin1, echoPin1, maxDistance);
-NewPing sonar2(triggerPin2, echoPin2, maxDistance); 
+NewPing sonar2(triggerPin2, echoPin2, maxDistance);
+
+Servo motor;  // 서보 모터 객체 생성
 
 // 모터 핀 설정
 const int motorPin = 3;
 
 // 오프셋 저장 변수
-const float sound1_offset = 31.2495;
-const float sound2_offset = 31.5667;
-const float sound3_offset = 31.5102;
+float sound1_offset = 39.7390;
+float sound2_offset = 43.3330;
+float sound3_offset = 95.8388;
 
 // 필터링된 값 저장 변수
 float filtered_sound1 = 0;
@@ -34,6 +37,10 @@ float sound2_filter_state = 0;
 float sound3_filter_state = 0;
 
 unsigned long t_start = 0;
+
+// 모터의 기준 위치 및 초음파 센서 위치
+const float motorX = 6.0 * 5;  // 모터의 X 좌표 (30cm)
+const float motorY = 0.0 * 5;  // 모터의 Y 좌표 (0cm)
 
 //********** Function declaration code **********//
 
@@ -52,79 +59,67 @@ float applyComplementaryFilter(int raw_value, float &filter_state)
     return y;
 }
 
-// 데이터 패킷을 전송하는 함수
+// 패킷으로 데이터를 전송하는 함수
 void sendPacket(char sensorType, float sound1, float sound2, float sound3, int distance1, int distance2, uint8_t motorValue) 
 {   
-    uint8_t checksum = 0;  
+    uint8_t packet[29]; // 패킷을 위한 배열 (ARA + 타입 + 센서 데이터 + 체크섬 + '\n' 포함)
+    uint8_t checksum = 0;
 
-    Serial.print("ARA");
+    // 패킷 시작 ('ARA')
+    packet[0] = 'A';
+    packet[1] = 'R';
+    packet[2] = 'A';
 
-    // 센서 타입 전송 (S 또는 U)
-    Serial.print(sensorType);
+    // 센서 타입 ('S' 또는 'U')
+    packet[3] = sensorType;
 
-    // 소리 센서 데이터 전송 (4바이트)
-    Serial.print('S');
-    checksum += sendSoundSensorData(convertToFixedPoint(sound1));
-    checksum += sendSoundSensorData(convertToFixedPoint(sound2));
-    checksum += sendSoundSensorData(convertToFixedPoint(sound3));
+    // 소리 센서 데이터 시작 ('S')
+    packet[4] = 'S';
+
+    // 소리 센서 데이터를 고정 소수점으로 변환하여 패킷에 추가
+    uint32_t sound1_fixed = convertToFixedPoint(sound1);
+    uint32_t sound2_fixed = convertToFixedPoint(sound2);
+    uint32_t sound3_fixed = convertToFixedPoint(sound3);
     
-    // 초음파 센서 데이터 전송 (2바이트)
-    Serial.print('U');
-    checksum += sendUltrasonicSensorData((uint16_t)distance1);
-    checksum += sendUltrasonicSensorData((uint16_t)distance2);
+    packet[5] = (sound1_fixed >> 24) & 0xFF;
+    packet[6] = (sound1_fixed >> 16) & 0xFF;
+    packet[7] = (sound1_fixed >> 8) & 0xFF;
+    packet[8] = sound1_fixed & 0xFF;
+    packet[9] = (sound2_fixed >> 24) & 0xFF;
+    packet[10] = (sound2_fixed >> 16) & 0xFF;
+    packet[11] = (sound2_fixed >> 8) & 0xFF;
+    packet[12] = sound2_fixed & 0xFF;
+    packet[13] = (sound3_fixed >> 24) & 0xFF;
+    packet[14] = (sound3_fixed >> 16) & 0xFF;
+    packet[15] = (sound3_fixed >> 8) & 0xFF;
+    packet[16] = sound3_fixed & 0xFF;
 
-    // 모터 데이터 전송 (1바이트)
-    Serial.print('M');
-    checksum += sendMotorData(motorValue);
+    // 초음파 센서 데이터 시작 ('U')
+    packet[17] = 'U';
+    packet[18] = (distance1 >> 8) & 0xFF;
+    packet[19] = distance1 & 0xFF;
+    packet[20] = (distance2 >> 8) & 0xFF;
+    packet[21] = distance2 & 0xFF;
 
-    // 체크섬 전송
+    // 모터 데이터 시작 ('M')
+    packet[22] = 'M';
+    packet[23] = motorValue;
+
+    checksum = packet[5]+packet[6]+packet[7]+packet[8]+packet[9]+packet[10]+packet[11]+packet[12]+packet[13]+packet[14]+packet[15]+packet[16]+packet[18]+packet[19]+packet[20]+packet[21]+packet[23];
+
     checksum = sensor_calculateChecksum(checksum);
-    Serial.write(checksum);
+    packet[24] = checksum;
 
-    // 패킷 끝 전송
-    Serial.print('\n');
+    // 패킷 끝에 '\n' 추가
+    packet[25] = '\n';
+
+    Serial.write(packet, 26); // 26바이트 패킷 전송 (\n 포함)
 }
 
 // 소리센서 값을 고정 소수점으로 변환하는 함수
 uint32_t convertToFixedPoint(float value) 
 {
     return (uint32_t)(value * 10000); // 소수점 4자리까지 고정 소수점으로 변환
-}
-
-// 소리 센서 데이터를 4바이트로 변환하고 1바이트씩 전송하는 함수
-uint8_t sendSoundSensorData(uint32_t value) 
-{
-    uint8_t byte1 = (value >> 24) & 0xFF;
-    uint8_t byte2 = (value >> 16) & 0xFF;
-    uint8_t byte3 = (value >> 8) & 0xFF;
-    uint8_t byte4 = value & 0xFF;
-
-    Serial.write(byte1);  // 상위 바이트부터 전송
-    Serial.write(byte2);
-    Serial.write(byte3);
-    Serial.write(byte4);  // 하위 바이트 전송
-
-    return byte1 + byte2 + byte3 + byte4; // 체크섬 계산을 위해 반환
-}
-
-// 초음파 센서 데이터를 2바이트로 변환하고 1바이트씩 전송하는 함수
-uint8_t sendUltrasonicSensorData(uint16_t value) 
-{
-    uint8_t upper_byte = (value >> 8) & 0xFF;
-    uint8_t lower_byte = value & 0xFF;
-
-    Serial.write(upper_byte);  // 상위 바이트 전송
-    Serial.write(lower_byte);  // 하위 바이트 전송
-
-    return upper_byte + lower_byte; // 체크섬 계산을 위해 반환
-}
-
-// 모터 데이터를 1바이트로 전송하는 함수
-uint8_t sendMotorData(uint8_t value) 
-{
-    Serial.write(value);  // 모터 값 전송
-
-    return value; // 체크섬 계산을 위해 반환
 }
 
 // sensor check sum 계산 함수
@@ -141,7 +136,6 @@ void processReceivedData()
 {
     if (Serial.available() >= 6) 
     {
-        // 6바이트 데이터를 순차적으로 읽어들임 (RAA 또는 RAM + 1바이트 데이터 + 1바이트 체크섬 + \n)
         char byte1 = Serial.read();
         char byte2 = Serial.read();
         char byte3 = Serial.read();
@@ -149,39 +143,91 @@ void processReceivedData()
         uint8_t receivedChecksum = Serial.read();
         char endChar = Serial.read();
 
-        // 마지막 바이트가 '\n'인지 확인, 아니라면 무시
         if (endChar != '\n') 
         {
             return;
         }
 
-        // 받은 명령어를 문자열로 변환
         String receivedCommand = String(byte1) + String(byte2) + String(byte3);
 
         if (receivedCommand.equals("RAA")) 
         {
-            // 아두이노가 자체적으로 모터를 제어
             analogWrite(motorPin, 0);  // 예시: 모터를 중지
         } 
         else if (receivedCommand.equals("RAM")) 
         {
-            // 체크섬 계산
-            uint8_t calculatedChecksum = sensor_calculateChecksum(motorValue);
+            uint16_t sum = motorValue + receivedChecksum;
+            uint8_t calculatedChecksum = sum & 0xFF;
 
-            if (calculatedChecksum == receivedChecksum) 
+            if (calculatedChecksum == 0x00) 
             {
-                // 체크섬이 일치하면 모터 제어
-                // 모터 값을 20도에서 160도 사이로 조정
                 int adjustedMotorValue = constrain(motorValue, 20, 160);
                 analogWrite(motorPin, adjustedMotorValue);
             } 
             else 
             {
-                // 체크섬이 일치하지 않으면 데이터를 무시하고 다음 데이터를 기다림
                 return;
             }
         }
     }
+}
+
+// 초음파 센서로 좌표 계산하는 함수
+void calculateUltrasonicCoordinates(int d1, int d2, float &x, float &y) 
+{
+    float ultrasonic1_x = 3.0 * 5;  // 15cm
+    float ultrasonic1_y = 8.0 * 5;  // 40cm
+    float ultrasonic2_x = 9.0 * 5;  // 45cm
+    float ultrasonic2_y = 8.0 * 5;  // 40cm
+
+    if (d1 < d2) 
+    {
+        x = ultrasonic1_x;
+        y = ultrasonic1_y - d1; // 거리가 멀어질수록 y축 값이 작아짐
+    } 
+    else 
+    {
+        x = ultrasonic2_x;
+        y = ultrasonic2_y - d2; // 거리가 멀어질수록 y축 값이 작아짐
+    }
+
+    x = round(x / 5.0) * 5;
+    y = round(y / 5.0) * 5;
+
+    if (y < 0) 
+    {
+        y = 0;
+    }
+}
+
+// 모터 각도 계산 함수
+int calculateMotorAngle(float x, float y) 
+{
+    float deltaX = x - motorX;
+    float deltaY = y - motorY;
+
+    float angleRadians = atan2(deltaY, deltaX);
+    int angleDegrees = angleRadians * 180 / PI;
+
+    angleDegrees = 180 - angleDegrees;
+
+    int constrainedAngle = constrain(angleDegrees, 20, 160);
+
+    return constrainedAngle;
+}
+
+// 초음파 센서를 읽고 모터를 제어하는 함수
+void readUltrasonicSensorsAndControlMotor() 
+{
+    int distance1 = sonar1.ping_cm();
+    int distance2 = sonar2.ping_cm();
+
+    float x = 0, y = 0;
+
+    calculateUltrasonicCoordinates(distance1, distance2, x, y);
+
+    int motorAngle = calculateMotorAngle(x, y);
+    motor.write(motorAngle);
 }
 
 //********** Main code **********//
@@ -198,7 +244,8 @@ void setup()
     pinMode(triggerPin2, OUTPUT);
     pinMode(echoPin2, INPUT);
 
-    pinMode(motorPin, OUTPUT);
+    motor.attach(motorPin);
+    motor.write(90);  // 모터를 초기 위치 90도로 설정
 
     t_start = millis();
 }
@@ -227,5 +274,8 @@ void loop()
         
         // 라즈베리파이로부터 데이터 읽기
         processReceivedData();
+
+        // 초음파 센서를 읽고 모터를 제어
+        readUltrasonicSensorsAndControlMotor();
     }
 }
