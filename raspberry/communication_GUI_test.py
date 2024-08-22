@@ -25,48 +25,59 @@ class Cam:
                     Connection.write(struct.pack('<L', 0))
         finally:
             Connection.close()
-            socket.connect()
-
+            socket.close()
 
 
 class Manual:
-    def __init__(self, End, socket):
-        Msg = b''
+    def __init__(self, End, serial, socket):
+        while True:
+            Msg = b''
 
-        while End not in Msg:
-            Msg += socket.recv()
-        
-        if Msg != b'':
-            Start = Msg[:3].decode()
-            Msg = Msg[3:-len(End)]
+            while End not in Msg:
+                Msg += socket.recv(1024)
 
-            if Start == "GRA":
-                SendStart = b"RAA"
-                SendPacket = SendStart + End
-                print(SendPacket.decode())
+            if Msg != b'':
+                Msg_len = len(Msg)
+                Start = Msg[:3].decode("utf-8")
+                Msg = Msg[3:-len(End)]
+                print(Start)
+                print(Msg)
 
-            elif Msg == "GRM":
-                Data = Msg[:-1]
-                DataSum = sum(Msg)
-                DataSum &= 0xFF
+                if Start == "GRA" and Msg_len == 4:
+                    SendStart = b"RAA"
+                    SendPacket = SendStart + End
+                    print(SendPacket)
+                    serial.write(SendPacket)
 
-                if DataSum == 0x00:
-                    SendStart = b'RAM'
-                    checksum = Data & 0xFF
-                    checksum = (~checksum & 0xFF) + 1
-                    SendPacket = SendStart + Data + checksum + End
-                    print(SendPacket.decode())
+                elif Start == "GRM" and Msg_len == 6:
+                    Data = Msg[0]
+                    checksum = Msg[1]
+                    DataSum = Data + checksum
+                    DataSum &= 0xFF
+                    print(DataSum)
+
+                    if DataSum == 0x00:
+                        SendStart = b'RAM'
+                        checksum = Data & 0xFF
+                        checksum = (~checksum & 0xFF) + 1
+                        print(Data, checksum)
+                        SendPacket = SendStart + Data.to_bytes(1, byteorder="big") + checksum.to_bytes(1, byteorder="big") + End
+                        serial.write(SendPacket)
+                        print(SendPacket)
+
 
 
 
 if __name__ == "__main__":
     EndMarker = b'\n'
-    ServerAddress = "192.168.0.13"
-    ServerPort = 9999
+    ServerAddress = "192.168.0.140"
+    ServerPort = 9998
     ClientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     ClientSocket.connect((ServerAddress, ServerPort))
 
-    cam_thread = Thread(target=Cam(ClientSocket))
-    manual_thread = Thread(target=Manual(EndMarker, ClientSocket))
+    ArduinoSerial = serial.Serial("/dev/ttyACM0", 115200, timeout=1)
+
+    cam_thread = Thread(target=lambda: Cam(ClientSocket))
+    manual_thread = Thread(target=lambda: Manual(EndMarker, ArduinoSerial, ClientSocket))
     cam_thread.start()
     manual_thread.start()
