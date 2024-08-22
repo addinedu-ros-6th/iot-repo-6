@@ -29,7 +29,8 @@ class Cam:
 
 
 class Manual:
-    def __init__(self, End, serial, socket):
+    def __init__(self, End, socket):
+    # def __init__(self, End, serial, socket):
         while True:
             Msg = b''
 
@@ -37,6 +38,7 @@ class Manual:
                 Msg += socket.recv(1024)
 
             if Msg != b'':
+                print(Msg)
                 Msg_len = len(Msg)
                 Start = Msg[:3].decode("utf-8")
                 Msg = Msg[3:-len(End)]
@@ -47,37 +49,37 @@ class Manual:
                     SendStart = b"RAA"
                     SendPacket = SendStart + End
                     print(SendPacket)
-                    serial.write(SendPacket)
+                    # serial.write(SendPacket)
 
                 elif Start == "GRM" and Msg_len == 6:
                     Data = Msg[0]
                     checksum = Msg[1]
-                    DataSum = Data + checksum
-                    DataSum &= 0xFF
-                    print(DataSum)
+                    checksum_check = Data + checksum
+                    checksum_check &= 0xFF
+                    print(checksum_check)
 
-                    if DataSum == 0x00:
+                    if checksum_check == 0x00:
                         SendStart = b'RAM'
-                        checksum = Data & 0xFF
-                        checksum = (~checksum & 0xFF) + 1
+                        checksum = (~Data & 0xFF) + 1
+                        checksum &= 0xFF
                         print(Data, checksum)
                         SendPacket = SendStart + Data.to_bytes(1, byteorder="big") + checksum.to_bytes(1, byteorder="big") + End
-                        serial.write(SendPacket)
+                        # serial.write(SendPacket)
                         print(SendPacket)
-
 
 
 
 if __name__ == "__main__":
     EndMarker = b'\n'
-    ServerAddress = "192.168.0.140"
-    ServerPort = 9998
+    ServerAddress = "192.168.219.16"
+    ServerPort = 9999
     ClientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     ClientSocket.connect((ServerAddress, ServerPort))
 
-    ArduinoSerial = serial.Serial("/dev/ttyACM0", 115200, timeout=1)
+    # ArduinoSerial = serial.Serial("/dev/ttyACM0", 115200, timeout=1)
 
     cam_thread = Thread(target=lambda: Cam(ClientSocket))
-    manual_thread = Thread(target=lambda: Manual(EndMarker, ArduinoSerial, ClientSocket))
+    # manual_thread = Thread(target=lambda: Manual(EndMarker, ArduinoSerial, ClientSocket))
+    manual_thread = Thread(target=lambda: Manual(EndMarker, ClientSocket))
     cam_thread.start()
     manual_thread.start()
