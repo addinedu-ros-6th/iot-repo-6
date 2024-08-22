@@ -171,7 +171,9 @@ void processReceivedData()
             if (calculatedChecksum == receivedChecksum) 
             {
                 // 체크섬이 일치하면 모터 제어
-               analogWrite(motorPin, motorValue);
+                // 모터 값을 20도에서 160도 사이로 조정
+                int adjustedMotorValue = constrain(motorValue, 20, 160);
+                analogWrite(motorPin, adjustedMotorValue);
             } 
             else 
             {
