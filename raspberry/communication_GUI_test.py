@@ -71,7 +71,7 @@ class Manual:
 
 if __name__ == "__main__":
     EndMarker = b'\n'
-    ServerAddress = "192.168.219.16"
+    ServerAddress = "192.168.0.141"
     ServerPort = 9999
     ClientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     ClientSocket.connect((ServerAddress, ServerPort))
