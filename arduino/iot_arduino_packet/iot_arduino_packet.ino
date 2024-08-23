@@ -22,9 +22,9 @@ Servo motor;  // 서보 모터 객체 생성
 const int motorPin = 3;
 
 // 오프셋 저장 변수
-float sound1_offset = 39.7390;
-float sound2_offset = 43.3330;
-float sound3_offset = 95.8388;
+const float sound1_offset = 32.2300;
+const float sound2_offset = 32.0435;
+const float sound3_offset = 31.7325;
 
 // 필터링된 값 저장 변수
 float filtered_sound1 = 0;
@@ -131,47 +131,6 @@ uint8_t sensor_calculateChecksum(uint8_t checksum)
     return checksum;
 }
 
-// 라즈베리파이로부터 받은 데이터를 처리하는 함수
-void processReceivedData() 
-{
-    if (Serial.available() >= 6) 
-    {
-        char byte1 = Serial.read();
-        char byte2 = Serial.read();
-        char byte3 = Serial.read();
-        uint8_t motorValue = Serial.read();
-        uint8_t receivedChecksum = Serial.read();
-        char endChar = Serial.read();
-
-        if (endChar != '\n') 
-        {
-            return;
-        }
-
-        String receivedCommand = String(byte1) + String(byte2) + String(byte3);
-
-        if (receivedCommand.equals("RAA")) 
-        {
-            analogWrite(motorPin, 0);  // 예시: 모터를 중지
-        } 
-        else if (receivedCommand.equals("RAM")) 
-        {
-            uint16_t sum = motorValue + receivedChecksum;
-            uint8_t calculatedChecksum = sum & 0xFF;
-
-            if (calculatedChecksum == 0x00) 
-            {
-                int adjustedMotorValue = constrain(motorValue, 20, 160);
-                analogWrite(motorPin, adjustedMotorValue);
-            } 
-            else 
-            {
-                return;
-            }
-        }
-    }
-}
-
 // 초음파 센서로 좌표 계산하는 함수
 void calculateUltrasonicCoordinates(int d1, int d2, float &x, float &y) 
 {
@@ -230,6 +189,100 @@ void readUltrasonicSensorsAndControlMotor()
     motor.write(motorAngle);
 }
 
+// 소리 센서 중 가장 큰 값을 가진 센서의 좌표로 모터 각도를 계산하는 함수
+int calculateMotorAngleFromMaxSensor() 
+{
+    // 가장 큰 소리 값을 가진 센서를 찾음
+    float max_value = max(filtered_sound1, max(filtered_sound2, filtered_sound3));
+    float target_x, target_y;
+
+    if (max_value == filtered_sound1) 
+    {
+        target_x = sensor1_x;
+        target_y = sensor1_y;
+    } 
+    else if (max_value == filtered_sound2) 
+    {
+        target_x = sensor2_x;
+        target_y = sensor2_y;
+    } 
+    else 
+    {
+        target_x = sensor3_x;
+        target_y = sensor3_y;
+    }
+
+    // 목표 좌표와 서보 모터 위치 사이의 차이 계산
+    float deltaX = target_x - motorX;
+    float deltaY = target_y - motorY;
+
+    // atan2 함수로 라디안 단위의 각도 계산
+    float angleRadians = atan2(deltaY, deltaX);
+
+    // 라디안을 도 단위로 변환
+    int angleDegrees = angleRadians * 180 / PI;
+
+    // 시계 방향으로 회전할 수 있도록 각도 조정
+    angleDegrees = 180 - angleDegrees;
+
+    // 서보 모터의 각도를 20도에서 160도 사이로 제한
+    int constrainedAngle = constrain(angleDegrees, 20, 160);
+
+    return constrainedAngle;
+}
+
+// 라즈베리파이로부터 받은 데이터를 처리하는 함수
+void processReceivedData() 
+{
+    if (Serial.available() >= 6) 
+    {
+        char byte1 = Serial.read();
+        char byte2 = Serial.read();
+        char byte3 = Serial.read();
+        uint8_t motorValue = Serial.read();
+        uint8_t receivedChecksum = Serial.read();
+        char endChar = Serial.read();
+
+        if (endChar != '\n') 
+        {
+            return;
+        }
+
+        String receivedCommand = String(byte1) + String(byte2) + String(byte3);
+
+        if (receivedCommand.equals("RAA")) 
+        {
+            // 실시간으로 수집된 센서 데이터를 사용하여 모터를 제어
+            char sensorType = (filtered_sound1 <= 10 && filtered_sound2 <= 10 && filtered_sound3 <= 10) ? 'U' : 'S';
+
+            if (sensorType == 'S') 
+            {
+                int motorAngle = calculateMotorAngleFromMaxSensor();
+                motor.write(motorAngle);
+            } 
+            else if (sensorType == 'U') 
+            {
+                readUltrasonicSensorsAndControlMotor();
+            }
+        } 
+        else if (receivedCommand.equals("RAM")) 
+        {
+            uint16_t sum = motorValue + receivedChecksum;
+            uint8_t calculatedChecksum = sum & 0xFF;
+
+            if (calculatedChecksum == 0x00) 
+            {
+                int adjustedMotorValue = constrain(motorValue, 20, 160);
+                motor.write(adjustedMotorValue);
+            } 
+            else 
+            {
+                return;
+            }
+        }
+    }
+}
+
 //********** Main code **********//
 void setup() 
 {
@@ -254,28 +307,29 @@ void loop()
 {
     if (millis() - t_start >= 20) 
     {
-        t_start = millis(); 
+        t_start = millis();
 
-        int raw_sound1 = analogRead(soundSensor1Pin) - sound1_offset;
-        int raw_sound2 = analogRead(soundSensor2Pin) - sound2_offset;
-        int raw_sound3 = analogRead(soundSensor3Pin) - sound3_offset;
+        // 소리 센서 값 읽기(소숫점 넷째 자리까지)
+        float raw_sound1 = (analogRead(soundSensor1Pin) / 1023.0) * 5.0 - sound1_offset;
+        float raw_sound2 = (analogRead(soundSensor2Pin) / 1023.0) * 5.0 - sound2_offset;
+        float raw_sound3 = (analogRead(soundSensor3Pin) / 1023.0) * 5.0 - sound3_offset;
 
+        // 상보 필터 적용
         filtered_sound1 = applyComplementaryFilter(raw_sound1, sound1_filter_state);
         filtered_sound2 = applyComplementaryFilter(raw_sound2, sound2_filter_state);
         filtered_sound3 = applyComplementaryFilter(raw_sound3, sound3_filter_state);
 
+        // 초음파 센서 값 읽기
         int distance1 = sonar1.ping_cm();
         int distance2 = sonar2.ping_cm();
 
         // 소리센서 값이 기준에 따라 패킷 타입 결정
         char sensorType = (filtered_sound1 <= 10 && filtered_sound2 <= 10 && filtered_sound3 <= 10) ? 'U' : 'S';
 
-        sendPacket(sensorType, filtered_sound1, filtered_sound2, filtered_sound3, distance1, distance2, analogRead(motorPin));
-        
-        // 라즈베리파이로부터 데이터 읽기
-        processReceivedData();
+        // 패킷 전송
+        sendPacket(sensorType, filtered_sound1, filtered_sound2, filtered_sound3, distance1, distance2, motor.read());
 
-        // 초음파 센서를 읽고 모터를 제어
-        readUltrasonicSensorsAndControlMotor();
+        // 라즈베리파이로부터 데이터 읽기 및 모터 제어
+        processReceivedData();
     }
 }
