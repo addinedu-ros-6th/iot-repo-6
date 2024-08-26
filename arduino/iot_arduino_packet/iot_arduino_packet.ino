@@ -38,9 +38,29 @@ float sound3_filter_state = 0;
 
 unsigned long t_start = 0;
 
-// 모터의 기준 위치 및 초음파 센서 위치
-const float motorX = 6.0 * 5;  // 모터의 X 좌표 (30cm)
-const float motorY = 0.0 * 5;  // 모터의 Y 좌표 (0cm)
+// 소리 감지 임계값
+const int soundThreshold = 10;
+
+// grid sxale = 5cm
+const float gridScale = 5.0;  
+
+// 모터 위치 (cm 단위)
+const float motorX = 6.0 * gridScale;  // 모터의 X 좌표 (30cm)
+const float motorY = 0.0 * gridScale;  // 모터의 Y 좌표 (0cm)
+
+// 소리 센서 위치 (cm 단위)
+const float sensor1_x = 0.0 * gridScale;  // 0 cm
+const float sensor1_y = 4.0 * gridScale;  // 20 cm
+const float sensor2_x = 6.0 * gridScale;  // 30 cm
+const float sensor2_y = 8.0 * gridScale;  // 40 cm
+const float sensor3_x = 12.0 * gridScale; // 60 cm
+const float sensor3_y = 4.0 * gridScale;  // 20 cm
+
+// 초음파 센서 위치 (cm 단위)
+const float ultrasonic1_x = 3.0 * gridScale;  // 15cm
+const float ultrasonic1_y = 8.0 * gridScale;  // 40cm
+const float ultrasonic2_x = 9.0 * gridScale;  // 45cm
+const float ultrasonic2_y = 8.0 * gridScale;  // 40cm
 
 //********** Function declaration code **********//
 
@@ -134,11 +154,6 @@ uint8_t sensor_calculateChecksum(uint8_t checksum)
 // 초음파 센서로 좌표 계산하는 함수
 void calculateUltrasonicCoordinates(int d1, int d2, float &x, float &y) 
 {
-    float ultrasonic1_x = 3.0 * 5;  // 15cm
-    float ultrasonic1_y = 8.0 * 5;  // 40cm
-    float ultrasonic2_x = 9.0 * 5;  // 45cm
-    float ultrasonic2_y = 8.0 * 5;  // 40cm
-
     if (d1 < d2) 
     {
         x = ultrasonic1_x;
@@ -324,7 +339,7 @@ void loop()
         int distance2 = sonar2.ping_cm();
 
         // 소리센서 값이 기준에 따라 패킷 타입 결정
-        char sensorType = (filtered_sound1 <= 10 && filtered_sound2 <= 10 && filtered_sound3 <= 10) ? 'U' : 'S';
+        char sensorType = (filtered_sound1 <= soundThreshold && filtered_sound2 <= soundThreshold && filtered_sound3 <= soundThreshold) ? 'U' : 'S';
 
         // 패킷 전송
         sendPacket(sensorType, filtered_sound1, filtered_sound2, filtered_sound3, distance1, distance2, motor.read());
