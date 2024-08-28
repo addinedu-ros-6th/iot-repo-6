@@ -22,9 +22,9 @@ Servo motor;  // 서보 모터 객체 생성
 const int motorPin = 3;
 
 // 오프셋 저장 변수
-const float sound1_offset = 32.2300;
-const float sound2_offset = 32.0435;
-const float sound3_offset = 31.7325;
+const float sound1_offset = 80.8053;
+const float sound2_offset = 48.9360;
+const float sound3_offset = 86.5220;
 
 // 필터링된 값 저장 변수
 float filtered_sound1 = 0;
@@ -246,42 +246,37 @@ int calculateMotorAngleFromMaxSensor()
     return constrainedAngle;
 }
 
-// 라즈베리파이로부터 받은 데이터를 처리하는 함수
+char lastCommand[4] = "RAA";  // 초기 상태를 RAA로 설정
+
 void processReceivedData() 
 {
     if (Serial.available() >= 6) 
     {
-        char byte1 = Serial.read();
-        char byte2 = Serial.read();
-        char byte3 = Serial.read();
-        uint8_t motorValue = Serial.read();
-        uint8_t receivedChecksum = Serial.read();
-        char endChar = Serial.read();
+        char packet[6];
+        Serial.readBytes(packet, 6);  // 한 번에 6바이트 읽기
+
+        char byte1 = packet[0];
+        char byte2 = packet[1];
+        char byte3 = packet[2];
+        uint8_t motorValue = packet[3];
+        uint8_t receivedChecksum = packet[4];
+        char endChar = packet[5];
 
         if (endChar != '\n') 
         {
-            return;
+            return;  // 패킷이 유효하지 않으면 반환
         }
 
         String receivedCommand = String(byte1) + String(byte2) + String(byte3);
 
         if (receivedCommand.equals("RAA")) 
         {
-            // 실시간으로 수집된 센서 데이터를 사용하여 모터를 제어
-            char sensorType = (filtered_sound1 <= 10 && filtered_sound2 <= 10 && filtered_sound3 <= 10) ? 'U' : 'S';
-
-            if (sensorType == 'S') 
-            {
-                int motorAngle = calculateMotorAngleFromMaxSensor();
-                motor.write(motorAngle);
-            } 
-            else if (sensorType == 'U') 
-            {
-                readUltrasonicSensorsAndControlMotor();
-            }
+            strcpy(lastCommand, "RAA");  // 명령을 RAA로 설정
         } 
         else if (receivedCommand.equals("RAM")) 
         {
+            strcpy(lastCommand, "RAM");  // 명령을 RAM으로 설정
+
             uint16_t sum = motorValue + receivedChecksum;
             uint8_t calculatedChecksum = sum & 0xFF;
 
@@ -337,14 +332,29 @@ void loop()
         // 초음파 센서 값 읽기
         int distance1 = sonar1.ping_cm();
         int distance2 = sonar2.ping_cm();
+        
+        // 
+        // Serial.print(lastCommand); 
+        // 마지막 명령에 따라 모터 제어 수행
+        if (strcmp(lastCommand, "RAA") == 0) 
+        {
+            char sensorType = (filtered_sound1 <= soundThreshold || filtered_sound2 <= soundThreshold || filtered_sound3 <= soundThreshold) ? 'U' : 'S';
 
-        // 소리센서 값이 기준에 따라 패킷 타입 결정
-        char sensorType = (filtered_sound1 <= soundThreshold && filtered_sound2 <= soundThreshold && filtered_sound3 <= soundThreshold) ? 'U' : 'S';
+            if (sensorType == 'S') 
+            {
+                int motorAngle = calculateMotorAngleFromMaxSensor();
+                motor.write(motorAngle);
+            } 
+            else if (sensorType == 'U') 
+            {
+                readUltrasonicSensorsAndControlMotor();
+            }
 
-        // 패킷 전송
-        sendPacket(sensorType, filtered_sound1, filtered_sound2, filtered_sound3, distance1, distance2, motor.read());
+            // 패킷 전송
+            sendPacket(sensorType, filtered_sound1, filtered_sound2, filtered_sound3, distance1, distance2, motor.read());
+        }
 
-        // 라즈베리파이로부터 데이터 읽기 및 모터 제어
+        // 라즈베리파이로부터 데이터 읽기 및 명령 처리
         processReceivedData();
     }
 }
