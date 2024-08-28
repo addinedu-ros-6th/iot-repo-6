@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5 import uic
@@ -18,25 +18,16 @@ import res_rc
 
 
 
-class Communicator(QThread):
-    frame_received = pyqtSignal(QImage)
+class SocketCommunication(QObject):
     connection_status = pyqtSignal(bool)
 
     def __init__(self, ip='0.0.0.0', port=8000):
-        super().__init__()
+        super().__init__()   
         self.ip = ip
         self.port = port
-        self.is_running = True
+        
         self.server_socket = None
         self.client_socket = None
-        self.video_writer = None
-
-    def run(self):
-        while self.is_running:
-            if self.client_socket is None:
-                self.start_server()
-            else:
-                self.receive_frames()
 
     def start_server(self):
         try:
@@ -52,14 +43,55 @@ class Communicator(QThread):
             print(f"Socket error: {e}")
             self.retry_connection()
 
+    def stop_server(self):
+        if self.client_socket:
+            self.client_socket.close()
+            print("Socket Close Completed!!")
+        self.connection_status.emit(False)
+        print("Thread Exit Completed!!")
+
+    def retry_connection(self):
+        self.client_socket = None
+        self.connection_status.emit(False)
+  
+
+    def send_data(self, data):
+        try:
+            self.client_socket.sendall(data)
+            print(f"Sent data: {data}")
+        except Exception as e:
+            print(f"Error sending data: {e}")
+
+    
+
+class Camera(QThread):
+    frame_received = pyqtSignal(QImage)    
+
+    def __init__(self, socket):
+        super().__init__()        
+        self.m_cSocketComm = socket                
+        self.video_writer = None
+        self.is_running = True        
+
+    def run(self):
+        while self.is_running:
+            if self.m_cSocketComm.client_socket is None:
+                self.m_cSocketComm.start_server()
+            else:
+                self.receive_frames()    
+    
+    def stop(self):
+        self.is_running = False
+        self.m_cSocketComm.stop_server()        
+
     def receive_frames(self):
         try:
             while self.is_running:
-                image_len = struct.unpack('<L', self.connection.read(struct.calcsize('<L')))[0]
+                image_len = struct.unpack('<L', self.m_cSocketComm.connection.read(struct.calcsize('<L')))[0]
                 if not image_len:
                     break
                 # 이미지 데이터 수신
-                image_stream = self.connection.read(image_len)
+                image_stream = self.m_cSocketComm.connection.read(image_len)
                 qimage = QImage.fromData(image_stream)
                 self.frame_received.emit(qimage)
 
@@ -69,18 +101,7 @@ class Communicator(QThread):
 
         except (ConnectionError, pickle.UnpicklingError) as e:
             print(f"Error receiving frames: {e}")
-            self.retry_connection()
-
-    def send_data(self, data):
-        try:
-            self.client_socket.sendall(data)
-            print(f"Sent data: {data}")
-        except Exception as e:
-            print(f"Error sending data: {e}")
-
-    def retry_connection(self):
-        self.client_socket = None
-        self.connection_status.emit(False)
+            self.m_cSocketComm.retry_connection()    
 
     def start_recording(self, file_path):
         # Start writing video file
@@ -91,27 +112,11 @@ class Communicator(QThread):
             self.video_writer.release()
             self.video_writer = None
 
-    def stop(self):
-        self.is_running = False
-        if self.client_socket:
-            self.client_socket.close()
-            print("Socket Close Completed!!")
-        self.connection_status.emit(False)
-        print("Thread Exit Completed!!")
-          
-
-    def retry_connection(self):
-        self.client_socket = None
-        self.connection_status.emit(False)
-
-        self.quit()
-        self.wait()
+    
 
 
-
-
-Constants1 = namedtuple('Constants1', ['USER_UI', 'DEVELOP_UI'])
-constants1 = Constants1(0,1)
+Constants1 = namedtuple('Constants1', ['USER_UI'])
+constants1 = Constants1(0)
 
 from_class = uic.loadUiType('/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/ui/iot_project.ui')[0]
 
@@ -121,11 +126,9 @@ class Windowclass(QMainWindow, from_class):
         super().__init__()
         self.setupUi(self)
 
-        self.ModePage.clicked.connect(self.switchUI)
         # Set the initial UI
         self.stackedUI.setCurrentIndex(constants1.USER_UI)
-        self.m_UserPage = self.stackedUI.widget(constants1.USER_UI)
-        self.m_DevelopPage = self.stackedUI.widget(constants1.DEVELOP_UI)     
+        self.m_UserPage = self.stackedUI.widget(constants1.USER_UI)   
 
         self.m_ComStatusImg  = self.m_UserPage.findChild(QLabel, "ComStatusImg")
         self.m_MinValue = self.m_UserPage.findChild(QLabel, "MinValue")
@@ -152,12 +155,10 @@ class Windowclass(QMainWindow, from_class):
         self.m_RecBtn.setEnabled(False)
         self.m_RecBtn.setStyleSheet('background-color:gray; color : black; border-radius : 8px;')
         
-        self.m_ComStatus.setText("TCP / IP Not connected")
+        self.m_ComStatus.setText("Camera Not connected")
         self.m_StreamBtn.clicked.connect(self.clickedStreamBtn)
 
-        self.m_MinValue.setText("MinValue : {}".format(self.m_MoveBar.minimum()))
-        self.m_MaxValue.setText("MaxValue : {}".format(self.m_MoveBar.maximum()))
-        self.m_MidValue.setText("MidValue : 0")
+        self.m_MidValue.setText("Mid_Value : 0")
 
         self.m_isStreamOn = False  # Stream On Off 반전 시킬 용도로만 사용됨. 
         self.m_isManualModeOn = False # Manual Mode On Off 반전 시킬 용도로 사용됨.
@@ -171,16 +172,6 @@ class Windowclass(QMainWindow, from_class):
         self.m_disconnectImg = QPixmap('/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/img/disconnect.png')
         self.m_connectImg = QPixmap('/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/img/connect.png') 
         self.m_videoImg = QPixmap('/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/img/video.png')
-
-    def switchUI(self):
-        current_index = self.stackedUI.currentIndex()
-
-        if current_index == constants1.USER_UI:
-            self.stackedUI.setCurrentIndex(constants1.DEVELOP_UI)
-            self.ModePage.setText('User Page')            
-        else: # current_index == constants.DEVELOP_UI:
-            self.stackedUI.setCurrentIndex(constants1.USER_UI)
-            self.ModePage.setText('Developer Page')            
 
     def clickedStreamBtn(self):        
         if self.m_isStreamOn == False:  
@@ -233,10 +224,10 @@ class Windowclass(QMainWindow, from_class):
 
     def updateMotorValue(self, value):        
         if not self.m_SliderValueInitFlag:
-            self.m_MotorValue.setText(f'Motor Angle : {value}')     
+            self.m_MotorValue.setText(f'Current Angle : {value}')     
             self.m_SliderValueInitFlag = True  
         else:
-            self.m_MotorValue.setText(f'Motor Angle : {value}')
+            self.m_MotorValue.setText(f'Current Angle : {value}')
             Command = "GRM" # GUI -> RAS Manual Mode 전송 
             MotorValue = (value + 90)
             MotorValue &= 0xFF
@@ -250,20 +241,21 @@ class Windowclass(QMainWindow, from_class):
             EndData = b'\n'
             
             DataPacket = Command.encode() + MotorValue + checksum + EndData
-            self.m_image_receiver.send_data(DataPacket)
+            self.send_command(DataPacket)
             
     def start_stream(self):
         if self.m_image_receiver and self.m_image_receiver.isRunning():
             return
 
         # 서버 IP와 포트 번호 설정
-        server_ip = '192.168.219.16' 
-        server_port = 9999
+        server_ip = '192.168.0.140' 
+        server_port = 9900
 
         # 이미지 수신 스레드 생성 및 시작
-        self.m_image_receiver = Communicator(server_ip, server_port)
+        self.m_cSocket = SocketCommunication(server_ip, server_port)
+        self.m_image_receiver = Camera(self.m_cSocket)        
         self.m_image_receiver.frame_received.connect(self.update_image)
-        self.m_image_receiver.connection_status.connect(self.update_status)
+        self.m_cSocket.connection_status.connect(self.update_status)
         self.m_image_receiver.start()
 
     def stop_stream(self):
@@ -271,7 +263,7 @@ class Windowclass(QMainWindow, from_class):
             self.m_image_receiver.stop()
             self.m_image_receiver = None
             # self.m_ComStatus.setText('TCP/IP Not connected')
-
+                            
     def update_image(self, q_img):
         self.m_FrameImg = self.m_FrameImg.fromImage(q_img)
         self.m_FrameImg = self.m_FrameImg.scaled(self.m_DisplayFrame.width(), self.m_DisplayFrame.height())
@@ -280,7 +272,7 @@ class Windowclass(QMainWindow, from_class):
     def start_recording(self):
         now = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = now + '.avi'
-        file_path = '/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/record{0}'.format(filename)
+        file_path = '/home/jeback/dev_ws/iot_project/iot-repo-6/pyqt/src/{0}'.format(filename)
         self.m_image_receiver.start_recording(file_path)
 
     def stop_recording(self):
@@ -288,7 +280,7 @@ class Windowclass(QMainWindow, from_class):
 
     def update_status(self, status):
         if status:
-            self.m_ComStatus.setText('TCP / IP Connected')
+            self.m_ComStatus.setText('Camera Connected')
             self.m_ComStatusImg.clear()
             self.m_DisplayFrame.clear()
             ScaledConnectImg = self.m_connectImg.scaled(self.m_ComStatusImg.size(), Qt.KeepAspectRatio)           
@@ -300,7 +292,7 @@ class Windowclass(QMainWindow, from_class):
             if self.m_isManualModeOn == True:
                 self.m_MoveBar.setEnabled(True)
         else:
-            self.m_ComStatus.setText('TCP / IP Not connected')
+            self.m_ComStatus.setText('Camera Not connected')
             self.m_ComStatusImg.clear()
             self.m_DisplayFrame.clear()
             ScaledDisConnectImg = self.m_disconnectImg.scaled(self.m_ComStatusImg.size(), Qt.KeepAspectRatio)           
@@ -319,7 +311,7 @@ class Windowclass(QMainWindow, from_class):
 
     def send_command(self, DataPacket):
         if self.m_image_receiver:
-            self.m_image_receiver.send_data(DataPacket)
+            self.m_cSocket.send_data(DataPacket)
 
     def closeEvent(self, event):
         self.stop_stream()
