@@ -1,0 +1,12 @@
+<RCC>
+  <qresource prefix="icon">
+    <file>cctv.png</file>
+    <file>connect.png</file>
+    <file>disconnect.png</file>
+    <file>motor.png</file>
+    <file>record.png</file>
+    <file>scroll.png</file>
+    <file>stream.png</file>
+    <file>video.png</file>
+  </qresource>
+</RCC>
