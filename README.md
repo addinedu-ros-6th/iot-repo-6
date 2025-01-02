@@ -34,17 +34,30 @@ IoT 프로젝트 2조 저장소. 스마트 CCTV 시스템
 
 #### 📌 4.1 기능 리스트 
 
- <img src="https://github.com/user-attachments/assets/d444690a-f4e6-40ec-833c-e33b15fe1b54" width5="600" height="600"> 
+ <img src="https://github.com/user-attachments/assets/d444690a-f4e6-40ec-833c-e33b15fe1b54" width5="600" height="600">  <br/><br/>
 
 #### 📌 4.2 HW 아키텍쳐  
 
- <img src="https://github.com/user-attachments/assets/22a1bc53-93f6-4b57-b8b7-a514a00504d4" width5="600" height="350"> 
+ <img src="https://github.com/user-attachments/assets/22a1bc53-93f6-4b57-b8b7-a514a00504d4" width5="600" height="350">  <br/><br/>
 
 #### 📌 4.3 SW 아키텍쳐  
 
-  <img src="https://github.com/user-attachments/assets/1ea0912f-e838-4edc-9945-ed3799042a58" width5="1200" height="550"> 
+  <img src="https://github.com/user-attachments/assets/1ea0912f-e838-4edc-9945-ed3799042a58" width5="1200" height="450"> <br/><br/>
 
 #### 📌 4.4 UI  
+
+  <img src="https://github.com/user-attachments/assets/fecc19be-c28e-4e09-931e-9f954458922c" width5="150" height="600"> <br/><br/>
+  
  
-### 5. 시연 영상
+### 🎬 5. 시연 영상
 ---
+
+#### 📌 5.1 라즈베리파이 <-> GUI 통신
+  <img src="https://github.com/user-attachments/assets/84d1bdaf-fae8-45cd-96b4-ac2002147884" width5="150" height="400"> <br/><br/>
+
+#### 📌 5.2 수동 모드에서 GUI 동작 
+  <img src="https://github.com/user-attachments/assets/4b97377b-4b8d-4e97-87f6-7725e968b0df" width5="150" height="400"> <br/><br/>
+
+#### 📌 5.3 TDOA 방식을 통한 위치 추정 
+  <img src="https://github.com/user-attachments/assets/26745707-2940-415e-8605-7aa1d68b0b2f" width5="350" height="400"> <br/><br/>
+
