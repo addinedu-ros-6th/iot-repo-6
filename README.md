@@ -44,6 +44,70 @@ IoT 프로젝트 2조 저장소. 스마트 CCTV 시스템
 
   <img src="https://github.com/user-attachments/assets/1ea0912f-e838-4edc-9945-ed3799042a58" width5="1200" height="450"> <br/><br/>
 
+#### 📌 4.4 통신 프로토콜 
+   1) Arduino -> Raspberry Pi
+      <br/>
+      <table>
+        <tr>
+          <th colspan="15" align="center"> Data Packet </th>
+        </tr>
+        <tr>
+          <th align="center" >Sensor ID</th> <th align="center">Data1_H</th> <th align="center">Data1_L</th> <th align="center">Data2_H</th> <th align="center">Data2_L</th> <th align="center">Data3_H</th> <th align="center">Data3_L</th> <th align="center">Sensor ID</th> <th align="center">Data1</th> <th align="center">Data2</th> <th align="center">Motor</th> <th align= "center">Data1</th> <th align="center" >CheckSum</th> <th align="center" > End</th>
+        </tr>
+        <tr>
+         <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td>
+        </tr>
+        <tr>
+         <td align="center">S</td> <td colspan="2" align = "center">SoundSensor1 Upper/Lower Value</td> <td colspan="2" align = "center">SoundSensor2 Upper/Lower Value</td> <td colspan="2" align = "center">SoundSensor3 Upper/Lower Value</td> <td align="center">U</td> <td align="center">U_Sensor1 Value</td> <td align="center">U_Sensor2 Value</td> <td align="center">M</td>
+         <td align="center">Motor Value</td> <td align="center">CheckSum Value</td> <td align="center">\n</td>
+        </tr>
+       
+      </table>  
+
+      ( S: Sound Sensor / U: UltraSonic Sensor / M: Servo Motor )
+      <br/>
+      
+   2) GUI -> RaspberryPi 
+      <br/>
+      <table>
+       
+       <tr>
+         <th colspan="6" align="center">Data Packet</th>
+       </tr>
+       <tr>
+         <th align="center"> Sender </th> <th align="center"> Receiver </th> <th align="center">Auto/Manual</th> <th align="center">Data1</th> <th align="center">CheckSum</th> <th align="center"> End </th>
+       </tr>
+       <tr>
+         <td align="center">G</td> <td align="center">R</td> <td align="center">A</td> <td align="center">-</td> <td align="center">-</td> <td align="center">\n</td>
+       </tr>
+       <tr>
+         <td align="center">G</td> <td align="center">R</td> <td align="center">M</td> <td align="center">Motor Value</td> <td align="center">CheckSum Value</td> <td align="center">\n</td>
+       </tr>
+      
+      </table>
+
+   3) Raspberry Pi -> Arduino
+      <br/>
+      <table>
+       
+       <tr>
+         <th colspan="6" align="center">Data Packet</th>
+       </tr>
+       <tr>
+         <th align="center"> Sender </th> <th align="center"> Receiver </th> <th align="center">Auto/Manual</th> <th align="center">Data1</th> <th align="center">CheckSum</th> <th align="center"> End </th>
+       </tr>
+       <tr>
+         <td align="center">R</td> <td align="center">A</td> <td align="center">A</td> <td align="center">-</td> <td align="center">-</td> <td align="center">\n</td>
+       </tr>
+       <tr>
+         <td align="center">R</td> <td align="center">A</td> <td align="center">M</td> <td align="center">Motor Value</td> <td align="center">CheckSum Value</td> <td align="center">\n</td>
+       </tr>
+      
+      </table>
+      
+      ( G: GUI / R: Raspberry Pi / A: Arduino / A: Auto Mode  / M: Manual Mode )
+      <br/>
+      
 #### 📌 4.4 UI  
 
   <img src="https://github.com/user-attachments/assets/fecc19be-c28e-4e09-931e-9f954458922c" width5="150" height="600"> <br/><br/>
