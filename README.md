@@ -78,6 +78,9 @@ IoT 프로젝트 2조 저장소. 스마트 CCTV 시스템
          <th align="center"> Sender </th> <th align="center"> Receiver </th> <th align="center">Auto/Manual</th> <th align="center">Data1</th> <th align="center">CheckSum</th> <th align="center"> End </th>
        </tr>
        <tr>
+         <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td>
+       </tr>
+       <tr>
          <td align="center">G</td> <td align="center">R</td> <td align="center">A</td> <td align="center">-</td> <td align="center">-</td> <td align="center">\n</td>
        </tr>
        <tr>
@@ -95,6 +98,9 @@ IoT 프로젝트 2조 저장소. 스마트 CCTV 시스템
        </tr>
        <tr>
          <th align="center"> Sender </th> <th align="center"> Receiver </th> <th align="center">Auto/Manual</th> <th align="center">Data1</th> <th align="center">CheckSum</th> <th align="center"> End </th>
+       </tr>
+       <tr>
+         <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td> <td align = "center">1 Byte</td>
        </tr>
        <tr>
          <td align="center">R</td> <td align="center">A</td> <td align="center">A</td> <td align="center">-</td> <td align="center">-</td> <td align="center">\n</td>
